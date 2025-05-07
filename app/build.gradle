@@ -1,0 +1,70 @@
+// TestExcel1 Module
+
+plugins {
+    id ("com.android.application")
+    id ("org.jetbrains.kotlin.android") // Prevents duplicate kotlin warnings
+}
+
+android {
+    compileSdk 35
+    namespace 'com.all.excel1'
+    
+    defaultConfig {
+        applicationId "com.all.test_excel_1"
+        minSdkVersion 26
+        targetSdkVersion 35
+
+        versionCode 102
+        versionName "1.02"
+
+        // Limit languages to following list.
+        resConfigs "en", "es"
+        buildConfigField "long", "BuildTimeMilli", System.currentTimeMillis() + "L"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+
+            ndk {
+                // abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+                abiFilters 'armeabi-v7a', 'arm64-v8a'
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = 17
+        targetCompatibility = 17
+    }
+
+    // Save app version in string so resource can be used in layouts
+    applicationVariants.configureEach { variant ->
+        variant.resValue "string", "versionName", "v" + variant.versionName
+    }
+
+    gradle.projectsEvaluated {
+        tasks.withType(JavaCompile).tap {
+            configureEach {
+                // Enable verbose lint reporting during build.
+                options.compilerArgs << "-Xlint:unchecked" << "-Xlint:deprecation"
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation 'org.apache.poi:poi-ooxml:5.4.0'
+    // implementation 'org.apache.poi:poi-scratchpad:5.4.0'
+
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+    implementation 'androidx.recyclerview:recyclerview:1.4.0'
+
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
+}

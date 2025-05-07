@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">Test Excel1</string>
+    <string name="notification_msg">Press import button to load and display excel file from the local file system \n--\n Then press export to create an identical xlsx file</string>
+    <string name="title">Test Excel read and write</string>
+    <string name="description">Supports .xls, xlsx, .xlsm</string>
+</resources>
