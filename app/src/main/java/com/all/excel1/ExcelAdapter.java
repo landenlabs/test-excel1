@@ -9,6 +9,9 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
 
+/**
+ * RecyclerView Adapter used in TestExcel1 - by Dennis Lang  landenlabs.com  May-2025
+ */
 public class ExcelAdapter extends RecyclerView.Adapter<ExcelHolder> {
     private final ArrayList<ExcelRow> list;
 

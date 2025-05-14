@@ -1,16 +1,17 @@
 package com.all.excel1;
 
 import static android.view.View.GONE;
+import static android.view.View.VISIBLE;
+import static com.all.excel1.Alog.showInfo;
+import static com.all.excel1.ExcelXSS.getFile;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
-import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
-import android.provider.OpenableColumns;
 import android.view.View;
-import android.widget.Toast;
+import android.widget.TextView;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -21,9 +22,9 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * <pre>
@@ -39,20 +40,23 @@ public class MainActivity extends AppCompatActivity {
     private final ArrayList<ExcelRow> readExcelList = new ArrayList<>();
     private Context mContext;
     private ExcelAdapter excelAdapter;
+    private TextView statusTv;
+    private View progress;
+    private final ExcelXSS excelUtil = new ExcelXSS();
 
     // Must register before onCreate
     public ActivityResultLauncher<Intent> openFileLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
                 Uri uri = result.getData() != null ? result.getData().getData() : null;
-                importExcelAsync(uri);
+                importExcelAsync(this, uri);
             });
 
     ActivityResultLauncher<Intent> createFileLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
                 Uri uri = result.getData() != null ? result.getData().getData() : null;
-                exportExcelAsync(uri);
+                exportExcelAsync(this, uri);
             });
 
     @Override
@@ -64,6 +68,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void initViews() {
+        statusTv = findViewById(R.id.footer);
+        progress = findViewById(R.id.progress);
         RecyclerView recyclerView = findViewById(R.id.excel_content_rv);
         excelAdapter = new ExcelAdapter(readExcelList);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
@@ -90,72 +96,60 @@ public class MainActivity extends AppCompatActivity {
                 excelAdapter.notifyDataSetChanged();
             }
         } else {
-            Toast.makeText(mContext, "Please import excel before exporting", Toast.LENGTH_SHORT).show();
+            showInfo(statusTv, "Please import excel before exporting");
         }
     }
 
-    // Helper to extract real filename from uri provided by activity/intent response.
-    public String getFileName(@NonNull Uri uri) {
-        String result = null;
-        if (Objects.equals(uri.getScheme(), "content")) {
-            try ( Cursor cursor = getContentResolver()
-                    .query(uri, null, null, null, null) ) {
-                if (cursor != null && cursor.moveToFirst()) {
-                    int colIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
-                    result = cursor.getString(colIdx);
-                }
-            }
-        }
-        if (result == null) {
-            result = uri.getPath();
-            int cut = result.lastIndexOf('/');
-            if (cut != -1) {
-                result = result.substring(cut + 1);
-            }
-        }
-        return result;
-    }
 
     @SuppressLint("NotifyDataSetChanged")
     @AnyThread
-    private void importExcelAsync(@Nullable Uri uri) {
+    private void importExcelAsync(@NonNull Context context, @Nullable Uri uri) {
         if (uri != null) {
-            String filename = getFileName(uri);
-            Toast.makeText(mContext, "Importing..." + filename, Toast.LENGTH_SHORT).show();
+            File file = getFile(context, uri);
+            showInfo(statusTv, "Importing..." + file.getName() + " size=" + file.length());
+            progress.setVisibility(VISIBLE);
 
             // Perform work in background thread.
             new Thread(() -> {
-                ExcelUtil excelUtil = new ExcelUtil();
-                List<ExcelRow> readExcelNew = excelUtil.readExcel(mContext, uri, filename);
+
+                int sheetIdx = 0;
+                List<ExcelRow> readExcelNew = excelUtil.readSheet(mContext, uri, file.getName(), sheetIdx);
 
                 if (readExcelNew != null && !readExcelNew.isEmpty()) {
-                    // readExcelList.clear();
+                    // readExcelList.clear();   // Allow multiple imports to append
                     readExcelList.addAll(readExcelNew);
-                    runOnUiThread(() -> Toast.makeText(mContext, "Successfully imported", Toast.LENGTH_SHORT).show());
+                    showInfo(statusTv, "Successfully imported Sheets=" + excelUtil.inSheetCnt + " Rows=" + excelUtil.inRowCnt + " Size=" + file.length());
                 } else if (readExcelList != null) {
                     readExcelList.clear();
-                    runOnUiThread(() -> Toast.makeText(mContext, "No data", Toast.LENGTH_SHORT).show());
+                    showInfo(statusTv, "No data");
                 }
 
-                runOnUiThread(() -> excelAdapter.notifyDataSetChanged());
+                runOnUiThread(() -> {
+                    progress.setVisibility(GONE);
+                    excelAdapter.notifyDataSetChanged();
+                }) ;
             }).start();
         } else {
-            Toast.makeText(mContext, "Nothing to import", Toast.LENGTH_SHORT).show();
+            progress.setVisibility(GONE);
+            showInfo(mContext, "Nothing to import");
         }
     }
 
-    private void exportExcelAsync(@Nullable Uri uri) {
+    private void exportExcelAsync(@NonNull Context context, @Nullable Uri uri) {
         if (uri != null) {
-            String filename = getFileName(uri);
-            Toast.makeText(mContext, "Exporting..." + filename, Toast.LENGTH_SHORT).show();
+            File file = getFile(context, uri);
+            showInfo(statusTv, "Exporting..." + file.getName());
+            progress.setVisibility(VISIBLE);
 
             // Perform work in background thread.
             new Thread(() -> {
-                ExcelUtil excelUtil = new ExcelUtil();
-                excelUtil.writeExcel(mContext, readExcelList, uri, filename);
+                excelUtil.writeSheet(mContext, excelUtil.inSheet, excelUtil.inRows, uri, excelUtil.inSheetName);
+                runOnUiThread(() ->  progress.setVisibility(GONE));
+                showInfo(statusTv, "Exported  Sheets=" + excelUtil.outSheetCnt + " Rows=" + excelUtil.outRowCnt + " Size=" + file.length());
             }).start();
         } else {
-            Toast.makeText(mContext, "Nothing to import", Toast.LENGTH_SHORT).show();
+            progress.setVisibility(GONE);
+            showInfo(statusTv, "Nothing to import");
         }
     }
 }
