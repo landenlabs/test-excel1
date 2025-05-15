@@ -77,6 +77,7 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setAdapter(excelAdapter);
     }
 
+    @SuppressLint("NotifyDataSetChanged")
     public void onClick(View view) {
         int id = view.getId();
         findViewById(R.id.notice).setVisibility(GONE);

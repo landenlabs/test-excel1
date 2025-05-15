@@ -27,6 +27,7 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.ss.util.WorkbookUtil;
+import org.apache.poi.xssf.usermodel.XSSFCell;
 import org.apache.poi.xssf.usermodel.XSSFHyperlink;
 import org.apache.poi.xssf.usermodel.XSSFRow;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
@@ -50,6 +51,7 @@ public class ExcelXSS {
     // Read/import
     public int inMaxColIdx = 0, inRowIdx = 0, inSheetCnt = 0, inRowCnt = 0;
     public String inSheetName;
+    public String inSheetPrintArea;
     public XSSFSheet inSheet;
     public final List<ExcelRow> inRows = new ArrayList<>();
     public Exception lastEx = null;
@@ -91,6 +93,10 @@ public class ExcelXSS {
         int rowCount = inSheet.getPhysicalNumberOfRows();
         inRows.clear();
 
+        inSheetPrintArea = wb.getPrintArea(sheetIdx);
+        if (inSheetPrintArea != null) {
+            inSheetPrintArea = inSheetPrintArea.replaceAll("[^!]*!", "");
+        }
         inSheetCnt = wb.getNumberOfSheets();
         inRowCnt = rowCount;
         inSheetName = inSheet.getSheetName();
@@ -104,7 +110,7 @@ public class ExcelXSS {
                 excelRow.height = row.getHeight();
                 excelRow.style = row.getRowStyle();
                 excelRow.rowNum = inRowIdx;
-                excelRow.spans = row.getCTRow().getSpans();
+                excelRow.ctRow = row.getCTRow();
 
                 inMaxColIdx = Math.max(inMaxColIdx, row.getLastCellNum());
                 for (int colNum = row.getFirstCellNum(); colNum <= row.getLastCellNum(); colNum++) {
@@ -137,6 +143,10 @@ public class ExcelXSS {
 
             try (XSSFWorkbook workbook = new XSSFWorkbook()) {
                 XSSFSheet outSheet = workbook.createSheet(WorkbookUtil.createSafeSheetName(sheetName));
+
+                if (inSheetPrintArea != null)
+                    workbook.setPrintArea(workbook.getNumberOfSheets()-1, inSheetPrintArea);
+
                 setSheetSettings(outSheet, inSheet);
                 setSheet(outSheet, inRows);
 
@@ -144,6 +154,8 @@ public class ExcelXSS {
                     int widthIn256Units = inSheet.getColumnWidth(colIdx);
                     outSheet.setColumnWidth(colIdx, widthIn256Units);
                 }
+
+                editSheet(workbook, sheetName);
 
                 outSheetCnt = workbook.getNumberOfSheets();
                 outRowCnt = outSheet.getPhysicalNumberOfRows();
@@ -165,46 +177,58 @@ public class ExcelXSS {
         }
     }
 
-    /*
-        int headerColCnt = inRows.get(0).cells.size();
-        int maxCol = 0;
-        ArrayList<Integer> maxColWidth = new ArrayList<>(headerColCnt);
-        for (RowCells row : inRows) {
-            for (Cell cell : row.cells) {
-                int colIdx = cell.getColumnIndex();
-                maxCol = Math.max(maxCol, colIdx);
-                Object value = getCellFormatValue(cell);
-                if (colIdx < maxColWidth.size())
-                    maxColWidth.set(colIdx, Math.max(maxColWidth.get(colIdx), getWidth(value)));
-                else
-                    maxColWidth.add(colIdx, getWidth(value));
+    private void editSheet(XSSFWorkbook workbook, String sheetName) {
+        try {
+            XSSFSheet sheet = workbook.getSheet(sheetName);
+            setCell(sheet, 5, 'B', "15-May-2025");
+            setCell(sheet, 7, 'L', "test-local-weather");
+            setCell(sheet, 14, 'B', "tstLvl");
+            setCell(sheet, 18, 'N', "@");
+            setCell(sheet, 37, 'B', "test1");
+            setCell(sheet, 36, 'P', "test1aa");
+            setCell(sheet, 36, 'V', "test1bb");
+
+            setCell(sheet, 39, 'B', "test2");
+            setCell(sheet, 41, 'B', "test3");
+        } catch (Exception ex) {
+            Alog.error("Failed to edit sheet ", ex);
+        }
+    }
+
+    private void setCell(XSSFSheet sheet, int rowOneBased, char colLetter, String value) {
+        setCell(sheet, rowOneBased-1, colLetter - 'A', value);
+    }
+    private void setCell(XSSFSheet sheet, int rowZeroBased, int colZeroBased, String value) {
+        if (sheet != null && sheet.getLastRowNum() > rowZeroBased) {
+            XSSFRow row = sheet.getRow(rowZeroBased);
+            if (row.getLastCellNum() > colZeroBased) {
+                XSSFCell cell = row.getCell(colZeroBased);
+                cell.setCellValue(value);
             }
         }
+    }
 
-        outSheets = 0;
-        outRows = 0;
-        Workbook workbook = outSheet.getWorkbook();
-
-        for (int colIdx = 0; colIdx < maxCol; colIdx++) {
-            // Set the cell default width to n characters
-            int numChar = maxColWidth.get(colIdx);
-            outSheet.setColumnWidth(colIdx, numChar * 256);
-        }
-     */
     private void setSheet(@NonNull XSSFSheet outSheet, @NonNull List<ExcelRow> inRows) {
         outSheetCnt = outRowCnt = 0;
         Workbook workbook = outSheet.getWorkbook();
-        ArrayList<Integer> maxColWidth = new ArrayList<>(50);
 
-        for (int rowIdx = 0; rowIdx < inRows.size(); rowIdx++) {
-            ExcelRow inRow = inRows.get(rowIdx);
+        for (ExcelRow inRow : inRows) {
             XSSFRow outRow = outSheet.createRow(inRow.rowNum);
 
             setStyle(workbook, outRow, inRow.style);
             outRow.setHeight(inRow.height);
-            if (inRow.spans != null) {
-                outRow.getCTRow().setSpans(inRow.spans);
-                Alog.info(String.format(Locale. US, " write row=%d span=%s", inRow.rowNum, String.join(", ", inRow.spans)));
+            if (inRow.ctRow != null) {
+                if (inRow.ctRow.isSetSpans()) {
+                    outRow.getCTRow().setSpans(inRow.ctRow.getSpans());
+                }
+                if (inRow.ctRow.isSetCustomFormat())
+                    Alog.info("custom format");
+                if (inRow.ctRow.isSetCustomHeight())
+                    outRow.getCTRow().setCustomHeight(inRow.ctRow.getCustomHeight());
+                if (inRow.ctRow.isSetThickBot())
+                    outRow.getCTRow().setThickBot(inRow.ctRow.getThickBot());
+                if (inRow.ctRow.isSetThickTop())
+                    outRow.getCTRow().setThickTop(inRow.ctRow.getThickTop());
             }
 
             for (Cell inCell : inRow.cells) {
@@ -212,7 +236,7 @@ public class ExcelXSS {
 
                 switch (inCell.getCellType()) {
                     case _NONE:
-                        break;
+                        continue;
                     case NUMERIC:
                         outCell.setCellValue(inCell.getNumericCellValue());
                         break;
@@ -221,7 +245,8 @@ public class ExcelXSS {
                         break;
                     case FORMULA:
                         String formula = inCell.getCellFormula();
-                        outCell.setCellFormula(formula);
+                        // outCell.setCellFormula(formula);
+                        outCell.setCellValue(getCellFormatValue(inCell).toString());
                         break;
                     case BLANK:
                         outCell.setBlank();
@@ -346,6 +371,29 @@ public class ExcelXSS {
                 outSheet.addMergedRegion(region);
             }
         }
+
+        for (int colIdx = 0; colIdx < inMaxColIdx; colIdx++) {
+            if (inSheet.isColumnHidden(colIdx)) {
+                outSheet.setColumnHidden(colIdx, true);
+            }
+
+            CellStyle style = inSheet.getColumnStyle(colIdx);
+            if (style != null)
+                outSheet.setDefaultColumnStyle(colIdx, style);
+        }
+
+        int[] cbreaks = inSheet.getColumnBreaks();
+        if (cbreaks != null && cbreaks.length > 0) {
+            Alog.info("got cbreaks");
+        }
+        int[] rbreaks = inSheet.getRowBreaks();
+        if (rbreaks != null && cbreaks.length > 0) {
+            Alog.info("got cbreaks");
+        }
+
+        CellRangeAddress range = inSheet.getDimension();
+        if (range != null)
+            outSheet.setDimensionOverride(range);
     }
     
     private void setStyle(@NonNull Workbook workbook, @NonNull Cell outCell, @Nullable CellStyle inStyle) {

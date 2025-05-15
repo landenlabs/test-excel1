@@ -5,9 +5,9 @@ import static com.all.excel1.ExcelXSS.getCellFormatValue;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.CellType;
+import org.openxmlformats.schemas.spreadsheetml.x2006.main.CTRow;
 
 import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Excel data row extracted from .xlsx or .xlsm,  used in TestExcel1 - by Dennis Lang  landenlabs.com  May-2025
@@ -17,7 +17,7 @@ public class ExcelRow {
     public CellStyle style;
     public short height;
     public int rowNum;
-    public List<String> spans;
+    public CTRow ctRow;
 
     public ExcelRow(int capacity) {
         cells = new ArrayList<>(capacity);
