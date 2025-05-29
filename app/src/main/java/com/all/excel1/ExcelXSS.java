@@ -87,6 +87,19 @@ public class ExcelXSS {
         return list;
     }
 
+    private static char toChar(int aZero) {
+        return (char)( 'A' + aZero);
+    }
+
+    private static String toColLetters(int colZeroBased) {
+        if (colZeroBased < 26) {
+            return "" + toChar(colZeroBased);
+        } else {
+            int letter2 = colZeroBased - 26;  // 0..25 = 'A'..'Z'
+            return toColLetters(colZeroBased/26 -1) + toChar(letter2);
+        }
+    }
+
     @NonNull
     public List<ExcelRow> readSheet(@NonNull XSSFWorkbook wb, int sheetIdx) {
         inSheet = wb.getSheetAt(sheetIdx);
@@ -120,6 +133,18 @@ public class ExcelXSS {
                         // itemMap.data.put(cell.getColumnIndex(), value);
                         if (cell != null) {
                             excelRow.cells.add(cell);
+
+                            /*
+                            Object dbgVal = getCellFormatValue(cell);
+                            if (dbgVal != null) {
+                                String dbgValStr = dbgVal.toString();
+                                if ( ! dbgValStr.isEmpty()) {
+                                    String dbgMsg = String.format(Locale.US, "Cell,%s%d,%s",  toColLetters(colNum), row.getRowNum()+1, dbgVal);
+                                    Alog.info(dbgMsg);
+                                }
+                            }
+                             */
+
                         } else {
                             Alog.warn( "null cell at row=" + row.getRowNum() + " col=" + colNum);
                         }
