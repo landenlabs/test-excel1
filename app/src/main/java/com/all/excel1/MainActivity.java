@@ -10,6 +10,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.view.View;
 import android.widget.TextView;
 
@@ -21,6 +22,8 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+
+import org.apache.poi.poifs.macros.VBAMacroExtractor;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -43,6 +46,10 @@ public class MainActivity extends AppCompatActivity {
     private TextView statusTv;
     private View progress;
     private final ExcelXSS excelUtil = new ExcelXSS();
+    private String inFileName;
+    private String inFileFullPath;
+    private String outFileName;
+    private String outFileFullPath;
 
     // Must register before onCreate
     public ActivityResultLauncher<Intent> openFileLauncher = registerForActivityResult(
@@ -87,10 +94,27 @@ public class MainActivity extends AppCompatActivity {
             intent.setType("application/*");
             openFileLauncher.launch(intent);
         } else if (id == R.id.export_excel_btn && !readExcelList.isEmpty()) {
+
+            // Ask user to select destination directory.
             Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
             intent.setType("application/*");
-            intent.putExtra(Intent.EXTRA_TITLE, System.currentTimeMillis() + ".xlsx");
+            intent.putExtra(Intent.EXTRA_TITLE, outFileName.replace("xlsm", "xlsx") );
             createFileLauncher.launch(intent);
+
+            /*
+            // Clone source file and save changes over cloned file to preserve the macros.
+            outFileFullPath = inFileFullPath.replace(".", "_new.");
+            File src = new File(inFileFullPath);
+            File dst = new File(outFileFullPath);
+
+            if ( ! dst.exists() || src.length() != dst.length()) {
+                this.getIntent().setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                this.getIntent().setFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                this.getIntent().setFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+                copyFile(this, src, dst);
+            }
+             */
+            // exportExcelAsync(this, new File(outFileFullPath));
         } else if (id == R.id.clear_excel_btn) {
             if (readExcelList != null) {
                 readExcelList.clear();
@@ -101,12 +125,13 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-
     @SuppressLint("NotifyDataSetChanged")
     @AnyThread
     private void importExcelAsync(@NonNull Context context, @Nullable Uri uri) {
         if (uri != null) {
             File file = getFile(context, uri);
+            this.inFileName = file.getName();
+            this.inFileFullPath = file.getAbsolutePath();
             showInfo(statusTv, "Importing..." + file.getName() + " size=" + file.length());
             progress.setVisibility(VISIBLE);
 
@@ -120,6 +145,16 @@ public class MainActivity extends AppCompatActivity {
                     // readExcelList.clear();   // Allow multiple imports to append
                     readExcelList.addAll(readExcelNew);
                     showInfo(statusTv, "Successfully imported Sheets=" + excelUtil.inSheetCnt + " Rows=" + excelUtil.inRowCnt + " Size=" + file.length());
+
+                    try {
+                        VBAMacroExtractor extractor = new VBAMacroExtractor();
+                        File vbaDstDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                        extractor.extract(file, vbaDstDir);
+                    } catch (Exception ex) {
+                        // Write fails for OS >= 10
+                        // showError(statusTv, "Failed to save Macros to " + file.getAbsolutePath(), ex);
+                    }
+
                 } else if (readExcelList != null) {
                     readExcelList.clear();
                     showInfo(statusTv, "No data");
@@ -129,10 +164,37 @@ public class MainActivity extends AppCompatActivity {
                     progress.setVisibility(GONE);
                     excelAdapter.notifyDataSetChanged();
                 }) ;
+
+                outFileFullPath = inFileFullPath.replace(".", "_new.");
+                File dst = new File(outFileFullPath);
+                outFileName = dst.getName();
+                /*
+                if ( ! dst.exists() || file.length() != dst.length()) {
+                    copyFile(context, uri, dst);
+                }
+                 */
             }).start();
         } else {
             progress.setVisibility(GONE);
             showInfo(mContext, "Nothing to import");
+        }
+    }
+
+    private void exportExcelAsync(@NonNull Context context, @Nullable File dst) {
+        if (dst != null) {
+            showInfo(statusTv, "Exporting..." + dst.getName());
+            progress.setVisibility(VISIBLE);
+
+            // Perform work in background thread.
+            new Thread(() -> {
+                excelUtil.writeSheet(mContext, excelUtil.inSheet, excelUtil.inRows, dst, excelUtil.inSheetName);
+                runOnUiThread(() ->  progress.setVisibility(GONE));
+
+                showInfo(statusTv, "Exported  Sheets=" + excelUtil.outSheetCnt + " Rows=" + excelUtil.outRowCnt + " Size=" + dst.length());
+            }).start();
+        } else {
+            progress.setVisibility(GONE);
+            showInfo(statusTv, "Nothing to import");
         }
     }
 
@@ -146,6 +208,7 @@ public class MainActivity extends AppCompatActivity {
             new Thread(() -> {
                 excelUtil.writeSheet(mContext, excelUtil.inSheet, excelUtil.inRows, uri, excelUtil.inSheetName);
                 runOnUiThread(() ->  progress.setVisibility(GONE));
+
                 showInfo(statusTv, "Exported  Sheets=" + excelUtil.outSheetCnt + " Rows=" + excelUtil.outRowCnt + " Size=" + file.length());
             }).start();
         } else {

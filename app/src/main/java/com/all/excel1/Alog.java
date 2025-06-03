@@ -49,6 +49,17 @@ public class Alog {
         Log.i(TAG, msg);
     }
 
+    public static void showError(@NonNull TextView statusTv, @NonNull String msg, @NonNull Throwable tr) {
+        if (isUiThread()) {
+            statusTv.setText(msg);
+        } else {
+            new Handler(statusTv.getContext().getMainLooper()).post(() -> {
+                statusTv.setText(msg);
+            });
+        }
+        Log.e(TAG, msg, tr);
+    }
+
     public static void showError(@NonNull Context context, @NonNull String msg, @NonNull Throwable tr) {
         new Handler(context.getMainLooper()).post(() -> {
             Toast.makeText(context, msg + tr, Toast.LENGTH_LONG).show();

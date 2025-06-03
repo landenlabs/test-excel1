@@ -14,6 +14,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.WorkerThread;
 
+import org.apache.poi.ooxml.POIXMLDocumentPart;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.Comment;
@@ -34,6 +35,7 @@ import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
@@ -55,15 +57,15 @@ public class ExcelXSS {
     public XSSFSheet inSheet;
     public final List<ExcelRow> inRows = new ArrayList<>();
     public Exception lastEx = null;
+    public Map<String, String>  macros;
 
     // Write/export
     public int outSheetCnt = 0, outRowCnt = 0;
     private final Map<Short, CellStyle> outStyles = new HashMap<>();
 
-
     @Nullable
     @WorkerThread
-    public List<ExcelRow> readSheet(Context context, Uri uri, String filePath, int sheetIdx) {
+    public List<ExcelRow> readSheet(@NonNull Context context, @NonNull  Uri uri, @NonNull  String filePath, int sheetIdx) {
         List<ExcelRow> list = null;
         lastEx = null;
         inRowIdx = inRowCnt = inSheetCnt = 0;
@@ -78,7 +80,23 @@ public class ExcelXSS {
         }
 
         String extString = filePath.substring(filePath.lastIndexOf("."));
+        /*
+        if (".xlsm".equals(extString)) {
+            // https://stackoverflow.com/questions/60297525/reading-xlsm-macros-file-using-poi-does-not-work-with-vbamacroreader-and-vbamac
+            try (InputStream is = context.getContentResolver().openInputStream(uri)) {
+                VBAMacroReader macRdr = new VBAMacroReader(is);
+                macros = macRdr.readMacros();
+                macros.forEach((key,val)-> System.out.println("Key:"+key+" Value:"+val));
+            } catch (Exception ex) {
+                lastEx = ex;
+                showError(context,  "Read excel macro error ", ex);
+            }
+        }
+         */
+
         try (InputStream is = context.getContentResolver().openInputStream(uri); XSSFWorkbook wb = new XSSFWorkbook(is)) {  // .xlsx, .xlsm
+            List<POIXMLDocumentPart.RelationPart> parts =  wb.getRelationParts();
+            showInfo(context, "Loaded part count=" + parts.size());
             list = readSheet(wb, sheetIdx);
         } catch (Exception ex) {
             lastEx = ex;
@@ -160,8 +178,29 @@ public class ExcelXSS {
         return inRows;
     }
 
+    public void writeSheet(
+            @NonNull Context context, @NonNull XSSFSheet inSheet, @NonNull List<ExcelRow> inRows,
+            @NonNull File dst, String sheetName) {
+        try (OutputStream outputStream = new FileOutputStream(dst)) {
+            writeSheet(context, inSheet, inRows, outputStream, sheetName);
+        } catch (Exception ex) {
+            showError(context, "Export error ", ex);
+        }
+    }
 
-    public void writeSheet(@NonNull Context context, @NonNull XSSFSheet inSheet, @NonNull List<ExcelRow> inRows, @NonNull Uri uri, String sheetName) {
+    public void writeSheet(
+            @NonNull Context context, @NonNull XSSFSheet inSheet, @NonNull List<ExcelRow> inRows,
+            @NonNull Uri uri, String sheetName) {
+        try (OutputStream outputStream = context.getContentResolver().openOutputStream(uri)) {
+            writeSheet(context, inSheet, inRows, outputStream, sheetName);
+        } catch (Exception ex) {
+            showError(context, "Export error ", ex);
+        }
+    }
+
+    public void writeSheet(
+            @NonNull Context context, @NonNull XSSFSheet inSheet, @NonNull List<ExcelRow> inRows,
+            @NonNull OutputStream outputStream, String sheetName) {
         outStyles.clear();
         try {
             outSheetCnt = outRowCnt = 0;
@@ -185,13 +224,8 @@ public class ExcelXSS {
                 outSheetCnt = workbook.getNumberOfSheets();
                 outRowCnt = outSheet.getPhysicalNumberOfRows();
                 showInfo(context, "Export saving Sheets=" + outSheetCnt + "  Rows=" + outRowCnt);
-                try (OutputStream outputStream = context.getContentResolver().openOutputStream(uri)) {
-                    workbook.write(outputStream);
-                    outputStream.flush();
-                } catch (Exception ex) {
-                    showError(context, "Export error ", ex);
-                }
-
+                workbook.write(outputStream);
+                outputStream.flush();
                 showInfo(context, "Export successful" );
             } catch (Exception ex) {
                 showError(context, "Export error ", ex);
